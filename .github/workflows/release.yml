@@ -2,7 +2,7 @@ name: build
 
 on:
   release:
-    type: [created]
+    types: [created]
 
 jobs:
   build-go-binary:
@@ -23,5 +23,3 @@ jobs:
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
           binary_name: "pass-gen"
-          
-          
