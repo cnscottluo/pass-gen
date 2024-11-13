@@ -2,6 +2,7 @@ package cmd
 
 import (
 	crand "crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"math/rand"
@@ -12,73 +13,83 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	length     uint8
+	digits     bool
+	symbols    bool
+	minDigits  uint8
+	minSymbols uint8
+	ambiguous  bool
+)
+
+//goland:noinspection ALL
+var (
+	upperCharsAll    = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	upperCharsNoAmb  = "ABCDEFGHJKLMNPQRSTUVWXYZ" // exclude I O
+	lowerCharsAll    = "abcdefghijklmnopqrstuvwxyz"
+	lowerCharsNoAmb  = "abcdefghijkmnpqrstuvwxyz" // exclude l o
+	digitsCharsAll   = "0123456789"
+	digitsCharsNoAmb = "23456789" // exclude 0 1
+	symbolsChars     = "!@#$%^&*"
+)
+
 var rootCmd = &cobra.Command{
 	Use:   "pass-gen",
 	Short: "A random password generator",
 	Long: `A powerful random password generator that creates secure passwords based on specified rules.
-Controls password length, character types, and minimum number of digits and special characters.`,
+Controls password length, character types, and minimum digits of digits and special characters.`,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		return validateFlags()
+	},
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := validateFlags(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-
-		var (
-			capitalCharsAll   = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-			capitalCharsNoAmb = "ABCDEFGHJKLMNPQRSTUVWXYZ" // 排除了 I 和 O
-			smallCharsAll     = "abcdefghijklmnopqrstuvwxyz"
-			smallCharsNoAmb   = "abcdefghijkmnpqrstuvwxyz" // 排除了 l 和 o
-			numberCharsAll    = "0123456789"
-			numberCharsNoAmb  = "23456789" // 排除了 0 和 1
-			symbolChars       = "!@#$%^&*"
-		)
-
-		capitalChars := capitalCharsAll
-		smallChars := smallCharsAll
-		numberChars := numberCharsAll
-		if avoidAmbiguous {
-			capitalChars = capitalCharsNoAmb
-			smallChars = smallCharsNoAmb
-			numberChars = numberCharsNoAmb
+		upperChars := upperCharsNoAmb
+		lowerChars := lowerCharsNoAmb
+		digitsChars := digitsCharsNoAmb
+		if ambiguous {
+			upperChars = upperCharsAll
+			lowerChars = lowerCharsAll
+			digitsChars = digitsCharsAll
 		}
 
 		var password strings.Builder
 		var chars string
 
-		if number {
-			for i := 0; i < minNumber; i++ {
-				password.WriteByte(numberChars[secureRandomInt(len(numberChars))])
+		if digits {
+			var init uint8 = 0
+			for ; init < minDigits; init++ {
+				password.WriteByte(digitsChars[secureRandomInt(len(digitsChars))])
 			}
 		}
-		if symbol {
-			for i := 0; i < minSymbol; i++ {
-				password.WriteByte(symbolChars[secureRandomInt(len(symbolChars))])
+		if symbols {
+			var init uint8 = 0
+			for ; init < minSymbols; init++ {
+				password.WriteByte(symbolsChars[secureRandomInt(len(symbolsChars))])
 			}
 		}
 
-		if capital {
-			chars += capitalChars
+		chars += upperChars
+		chars += lowerChars
+
+		if digits {
+			chars += digitsChars
 		}
-		if small {
-			chars += smallChars
-		}
-		if number {
-			chars += numberChars
-		}
-		if symbol {
-			chars += symbolChars
+		if symbols {
+			chars += symbolsChars
 		}
 
-		for i := 0; i < length-(minNumber+minSymbol); i++ {
+		var init uint8 = 0
+		for ; init < length-(minDigits+minSymbols); init++ {
 			password.WriteByte(chars[secureRandomInt(len(chars))])
 		}
 
 		pwdRunes := []rune(password.String())
 		for {
-			rand.Shuffle(len(pwdRunes), func(i, j int) {
-				pwdRunes[i], pwdRunes[j] = pwdRunes[j], pwdRunes[i]
-			})
-			if !strings.Contains(symbolChars, string(pwdRunes[0])) && !unicode.IsDigit(pwdRunes[0]) {
+			rand.Shuffle(
+				len(pwdRunes), func(i, j int) {
+					pwdRunes[i], pwdRunes[j] = pwdRunes[j], pwdRunes[i]
+				},
+			)
+			if !strings.Contains(symbolsChars, string(pwdRunes[0])) && !unicode.IsDigit(pwdRunes[0]) {
 				break
 			}
 		}
@@ -93,34 +104,13 @@ func Execute() {
 	}
 }
 
-var (
-	// Password length
-	length int
-	// Include uppercase letters
-	capital bool
-	// Include lowercase letters
-	small bool
-	// Include numbers
-	number bool
-	// Include special characters
-	symbol bool
-	// Minimum number of digits
-	minNumber int
-	// Minimum number of special characters
-	minSymbol int
-	// Avoid ambiguous characters
-	avoidAmbiguous bool
-)
-
 func init() {
-	rootCmd.Flags().IntVar(&length, "length", 16, "Password length")
-	rootCmd.Flags().BoolVar(&capital, "capital", true, "Include uppercase letters")
-	rootCmd.Flags().BoolVar(&small, "small", true, "Include lowercase letters")
-	rootCmd.Flags().BoolVar(&number, "number", true, "Include numbers")
-	rootCmd.Flags().BoolVar(&symbol, "symbol", true, "Include special characters")
-	rootCmd.Flags().IntVar(&minNumber, "min-number", 1, "Minimum number of digits")
-	rootCmd.Flags().IntVar(&minSymbol, "min-symbol", 1, "Minimum number of special characters")
-	rootCmd.Flags().BoolVar(&avoidAmbiguous, "avoid-ambiguous", true, "Avoid ambiguous characters")
+	rootCmd.Flags().Uint8VarP(&length, "length", "l", 16, "password length")
+	rootCmd.Flags().BoolVarP(&digits, "digits", "d", false, "include digits")
+	rootCmd.Flags().BoolVarP(&symbols, "symbols", "s", false, "include symbols")
+	rootCmd.Flags().Uint8VarP(&minDigits, "min-digits", "D", 3, "minimum digits of digits")
+	rootCmd.Flags().Uint8VarP(&minSymbols, "min-symbols", "S", 2, "minimum digits of symbols")
+	rootCmd.Flags().BoolVarP(&ambiguous, "ambiguous", "A", false, "include ambiguous characters")
 }
 
 func secureRandomInt(max int) int {
@@ -132,14 +122,12 @@ func secureRandomInt(max int) int {
 }
 
 func validateFlags() error {
-	if length < 1 {
-		return fmt.Errorf("password length must be positive")
+	if length < 8 {
+		return errors.New("password length must be at least 8 characters")
 	}
-	if !capital && !small && !number && !symbol {
-		return fmt.Errorf("at least one character type must be selected")
-	}
-	if minNumber+minSymbol > length {
-		return fmt.Errorf("minimum requirements exceed password length")
+
+	if minDigits+minSymbols > length/2 {
+		return errors.New("minimum digits and symbols must be less than half of password length")
 	}
 	return nil
 }
