@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/cobra/doc"
 )
 
 var (
@@ -54,15 +55,18 @@ Controls password length, character types, and minimum digits of digits and spec
 		var password strings.Builder
 		var chars string
 
+		var presetLen uint8 = 0
 		if digits {
 			var init uint8 = 0
 			for ; init < minDigits; init++ {
+				presetLen++
 				password.WriteByte(digitsChars[secureRandomInt(len(digitsChars))])
 			}
 		}
 		if symbols {
 			var init uint8 = 0
 			for ; init < minSymbols; init++ {
+				presetLen++
 				password.WriteByte(symbolsChars[secureRandomInt(len(symbolsChars))])
 			}
 		}
@@ -78,7 +82,7 @@ Controls password length, character types, and minimum digits of digits and spec
 		}
 
 		var init uint8 = 0
-		for ; init < length-(minDigits+minSymbols); init++ {
+		for ; init < length-presetLen; init++ {
 			password.WriteByte(chars[secureRandomInt(len(chars))])
 		}
 
@@ -104,7 +108,20 @@ func Execute() {
 	}
 }
 
+var docCmd = &cobra.Command{
+	Use:    "doc",
+	Hidden: true,
+	Run: func(cmd *cobra.Command, args []string) {
+		file, err := os.Create("README.md")
+		if err == nil {
+			defer file.Close()
+			doc.GenMarkdown(rootCmd, file)
+		}
+	},
+}
+
 func init() {
+	rootCmd.AddCommand(docCmd)
 	rootCmd.Flags().Uint8VarP(&length, "length", "l", 16, "password length")
 	rootCmd.Flags().BoolVarP(&digits, "digits", "d", false, "include digits")
 	rootCmd.Flags().BoolVarP(&symbols, "symbols", "s", false, "include symbols")
